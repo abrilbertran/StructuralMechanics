@@ -47,6 +47,8 @@ F_aux= MAAX*a;
 Fn=F_aux(i_nn);
 Fdext=F_aux(i_nd);
 
+% HOLAAA
+
 
 %% 1 Computee gravity sag
 
