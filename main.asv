@@ -1,0 +1,133 @@
+%% Projecte Vehicles Task 1
+
+clc; clear;
+
+%% Load data
+load("model_data.mat");
+K=KAAX; % units are in N,mm,tn
+M=MAAX;
+
+%% DEFINE GENERAL BC & INPUTS
+
+g      = 9810; % mm/s^2
+nnodes = size(node_coords,1);
+dofs   = (1:1:nnodes*6).';
+ndofs  = size(dofs,1);
+
+% 1. fixnodes for dirichlet conditions
+sets.s1=case_control_sets.subcase_0_SET_1;
+sets.s2=case_control_sets.subcase_0_SET_2;
+sets.s3=case_control_sets.subcase_0_SET_3;
+
+% Create fixed nodes matrix
+dir1 = [sets.s1,getDOF(sets.s1,3*ones(size(sets.s1,1),1)), zeros(size(sets.s1,1),1)];
+dir2 = [sets.s2,getDOF(sets.s2,1*ones(size(sets.s2,1),1)),0;
+        sets.s2,getDOF(sets.s2,2*ones(size(sets.s2,1),1)),0;
+        sets.s2,getDOF(sets.s2,6*ones(size(sets.s2,1),1)),0];
+
+fixnodes=[dir1;dir2];
+
+% Index
+i_nd = fixnodes(:,2);
+i_nn = setdiff(dofs,fixnodes(:,2));
+
+% ud
+ud = fixnodes(:,3);
+
+
+%% 1A COMPUTE R FORCES AXIAL SUPPORT AND CENTRAL MEMBRANE
+
+% Extract K submatrices
+Kdd = K(i_nd, i_nd);
+Kdn = K(i_nd, i_nn);
+Knd = K(i_nn, i_nd);
+Knn = K(i_nn, i_nn);
+
+% Z DIRECTION
+a     = repmat([0;0;-g;0;0;0],nnodes,1);
+F_aux = M*a;
+Fn    = F_aux(i_nn);
+Fdext = F_aux(i_nd);
+
+un   = Knn\(Fn-Knd*ud);
+Fd   = Kdd*ud+Kdn*un;
+gravZ.Rf = Fd-Fdext;
+gravZ.R_axial_      = gravZ.Rf(1); % reaction of axial support alone
+gravZ.R_axialTotal  = sum(gravZ.Rf(1:size(dir1,1))); % total reaction of the axial supports
+gravZ.Rx_membrane   = gravZ.Rf(size(dir1,1)+1);
+gravZ.Ry_membrane   = gravZ.Rf(size(dir1,1)+2);
+gravZ.Mz_membrane   = gravZ.Rf(size(dir1,1)+3);
+
+gravZ.U         = zeros(ndofs,1);
+gravZ.U_z(i_nd) = ud;
+gravZ.U_z(i_nn) = un;
+
+
+% Y DIRECTION
+a     = repmat([0;-g;0;0;0;0],nnodes,1);
+F_aux = M*a;
+Fn    = F_aux(i_nn);
+Fdext = F_aux(i_nd);
+
+un    = Knn\(Fn-Knd*ud);
+Fd    = Kdd*ud+Kdn*un;
+gravY.Rf  = Fd-Fdext;
+gravY.R_axial_      = gravY.Rf(1); % reaction of axial support alone
+gravY.R_axialTotal  = sum(gravY.Rf(1:size(dir1,1))); % total reaction of the axial supports
+gravY.Rx_membrane   = gravY.Rf(size(dir1,1)+1);
+gravY.Ry_membrane   = gravY.Rf(size(dir1,1)+2);
+gravY.Mz_membrane   = gravY.Rf(size(dir1,1)+3);
+
+gravY.U       = zeros(ndofs,1);
+gravY.U(i_nd) = ud;
+gravY.U(i_nn) = un;
+
+
+% Print reactions results
+fprintf('Gravity in z: \n');
+fprintf('Total axial support z-reaction = %.6g N\n', z.R_axialTotal);
+fprintf('Total membrane x-reaction = %.6g N\n', z.Rx_membrane);
+fprintf('Total membrane y-reaction = %.6g N\n', z.Ry_membrane);
+
+fprintf('\nGravity in y: \n');
+fprintf('Total axial support z-reaction = %.6g N\n', y.R_axialTotal);
+fprintf('Total membrane x-reaction = %.6g N\n', y.Rx_membrane);
+fprintf('Total membrane y-reaction = %.6g N\n', y.Ry_membrane);
+
+%% 1B COMPUTE MASS AND REACTION FORCES ARE SAME IN BOTH DIRECTIONS
+
+% Total mass with mass matrix
+a_aux = repmat([1;0;0;0;0;0],nnodes,1);
+mTotal= a_aux.'*M*a_aux;  % we project the mass matrix into a rb space
+
+% print Mass results
+fprintf('\nMass Comparison:\n');
+fprintf('M from Mass matrix = %.6g tn\n', mTotal);
+fprintf('M from Rf in z direction = %.6g tn\n', z.R_axialTotal/g);
+fprintf('M from Rf in y direction = %.6g tn\n', y.Ry_membrane/g);
+
+
+%% 1C COMPUTE RMS SFE
+
+% Optical surface nodes
+optNodes = sets.s3;
+x = node_coords(optNodes,1);
+y = node_coords(optNodes,2);
+
+% We extract the vertical displacements of the surface nodes
+wZ = gravZ.U(getDOF(optNodes,3));
+wY = gravY.U(getDOF(optNodes,3));
+
+A = [ones(size(optNodes),1), x, y];
+
+% Z DIRECTION
+coeffZ     = A \ wZ;                % We fit the displacements in a plane   
+wZ_fitted = A*coeff;               % Fitted plane at each optical node
+eZ        = wZ - wZ_fitted;        % Residual
+RMS_z     = sqrt(mean(eZ.^2))*1e6;
+
+% Y DIRECTION 
+coeff       = A \ wY;
+wY_fitted = A*coeff;
+eY        = wY - wY_fitted;
+RMS_y     = sqrt(mean(eY.^2))*1e6;

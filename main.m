@@ -51,12 +51,17 @@ Fdext = F_aux(i_nd);
 
 un   = Knn\(Fn-Knd*ud);
 Fd   = Kdd*ud+Kdn*un;
-z.Rf = Fd-Fdext;
-z.R_axial_      = z.Rf(1); % reaction of axial support alone
-z.R_axialTotal  = sum(z.Rf(1:size(dir1,1))); % total reaction of the axial supports
-z.Rx_membrane   = z.Rf(size(dir1,1)+1);
-z.Ry_membrane   = z.Rf(size(dir1,1)+2);
-z.Mz_membrane   = z.Rf(size(dir1,1)+3);
+gravZ.Rf = Fd-Fdext;
+gravZ.R_axial_      = gravZ.Rf(1); % reaction of axial support alone
+gravZ.R_axialTotal  = sum(gravZ.Rf(1:size(dir1,1))); % total reaction of the axial supports
+gravZ.Rx_membrane   = gravZ.Rf(size(dir1,1)+1);
+gravZ.Ry_membrane   = gravZ.Rf(size(dir1,1)+2);
+gravZ.Mz_membrane   = gravZ.Rf(size(dir1,1)+3);
+
+gravZ.U         = zeros(ndofs,1);
+gravZ.U(i_nd) = ud;
+gravZ.U(i_nn) = un;
+
 
 % Y DIRECTION
 a     = repmat([0;-g;0;0;0;0],nnodes,1);
@@ -66,23 +71,28 @@ Fdext = F_aux(i_nd);
 
 un    = Knn\(Fn-Knd*ud);
 Fd    = Kdd*ud+Kdn*un;
-y.Rf  = Fd-Fdext;
-y.R_axial_      = y.Rf(1); % reaction of axial support alone
-y.R_axialTotal  = sum(y.Rf(1:size(dir1,1))); % total reaction of the axial supports
-y.Rx_membrane   = y.Rf(size(dir1,1)+1);
-y.Ry_membrane   = y.Rf(size(dir1,1)+2);
-y.Mz_membrane   = y.Rf(size(dir1,1)+3);
+gravY.Rf  = Fd-Fdext;
+gravY.R_axial_      = gravY.Rf(1); % reaction of axial support alone
+gravY.R_axialTotal  = sum(gravY.Rf(1:size(dir1,1))); % total reaction of the axial supports
+gravY.Rx_membrane   = gravY.Rf(size(dir1,1)+1);
+gravY.Ry_membrane   = gravY.Rf(size(dir1,1)+2);
+gravY.Mz_membrane   = gravY.Rf(size(dir1,1)+3);
+
+gravY.U       = zeros(ndofs,1);
+gravY.U(i_nd) = ud;
+gravY.U(i_nn) = un;
+
 
 % Print reactions results
 fprintf('Gravity in z: \n');
-fprintf('Total axial support z-reaction = %.6g N\n', z.R_axialTotal);
-fprintf('Total membrane x-reaction = %.6g N\n', z.Rx_membrane);
-fprintf('Total membrane y-reaction = %.6g N\n', z.Ry_membrane);
+fprintf('Total axial support z-reaction = %.6g N\n', gravZ.R_axialTotal);
+fprintf('Total membrane x-reaction = %.6g N\n', gravZ.Rx_membrane);
+fprintf('Total membrane y-reaction = %.6g N\n', gravZ.Ry_membrane);
 
 fprintf('\nGravity in y: \n');
-fprintf('Total axial support z-reaction = %.6g N\n', y.R_axialTotal);
-fprintf('Total membrane x-reaction = %.6g N\n', y.Rx_membrane);
-fprintf('Total membrane y-reaction = %.6g N\n', y.Ry_membrane);
+fprintf('Total axial support z-reaction = %.6g N\n', gravY.R_axialTotal);
+fprintf('Total membrane x-reaction = %.6g N\n', gravY.Rx_membrane);
+fprintf('Total membrane y-reaction = %.6g N\n', gravY.Ry_membrane);
 
 %% 1B COMPUTE MASS AND REACTION FORCES ARE SAME IN BOTH DIRECTIONS
 
@@ -93,9 +103,35 @@ mTotal= a_aux.'*M*a_aux;  % we project the mass matrix into a rb space
 % print Mass results
 fprintf('\nMass Comparison:\n');
 fprintf('M from Mass matrix = %.6g tn\n', mTotal);
-fprintf('M from Rf in z direction = %.6g tn\n', z.R_axialTotal/g);
-fprintf('M from Rf in y direction = %.6g tn\n', y.Ry_membrane/g);
+fprintf('M from Rf in z direction = %.6g tn\n', gravZ.R_axialTotal/g);
+fprintf('M from Rf in y direction = %.6g tn\n', gravY.Ry_membrane/g);
 
 
 %% 1C COMPUTE RMS SFE
 
+% Optical surface nodes
+optNodes = sets.s3;
+x = node_coords(optNodes,1);
+y = node_coords(optNodes,2);
+
+% We extract the vertical displacements of the surface nodes
+wZ = gravZ.U(getDOF(optNodes,3));
+wY = gravY.U(getDOF(optNodes,3));
+
+A = [ones(size(optNodes,1),1), x, y];
+
+% Z DIRECTION
+coeff_z     = A \ wZ;                % We fit the displacements in a plane   
+wZ_fitted = A*coeff_z;               % Displacements from the fitted plane
+eZ        = wZ - wZ_fitted;          % Residual
+RMS_z     = sqrt(mean(eZ.^2))*1e6;
+
+% Y DIRECTION 
+coeff_y       = A \ wY;
+wY_fitted = A*coeff_y;
+eY        = wY - wY_fitted;
+RMS_y     = sqrt(mean(eY.^2))*1e6;
+
+fprintf('\nRMS results:\n');
+fprintf('RMS in z direction = %.6g nm\n', RMS_z);
+fprintf('RMS in y direction = %.6g nm\n', RMS_y);
