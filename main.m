@@ -1,11 +1,12 @@
 %% Projecte Vehicles Task 1
 
 clc; clear;
+
 %% Load data
 load("model_data.mat");
-
 K=KAAX; % units are in N,mm,tn
 M=MAAX;
+
 %% DEFINE GENERAL BC & INPUTS
 
 g      = 9810; % mm/s^2
@@ -86,9 +87,8 @@ fprintf('Total membrane y-reaction = %.6g N\n', y.Ry_membrane);
 %% 1B COMPUTE MASS AND REACTION FORCES ARE SAME IN BOTH DIRECTIONS
 
 % Total mass with mass matrix
-u = repmat([1;0;0;0;0;0],nnodes,1);
-mTotal= u.'*M*u;  % we project the mass matrix into a rb space
-
+a_aux = repmat([1;0;0;0;0;0],nnodes,1);
+mTotal= a_aux.'*M*a_aux;  % we project the mass matrix into a rb space
 
 % print Mass results
 fprintf('\nMass Comparison:\n');
@@ -96,11 +96,6 @@ fprintf('M from Mass matrix = %.6g tn\n', mTotal);
 fprintf('M from Rf in z direction = %.6g tn\n', z.R_axialTotal/g);
 fprintf('M from Rf in y direction = %.6g tn\n', y.Ry_membrane/g);
 
+
 %% 1C COMPUTE RMS SFE
 
-
-
-%% AUXILIAR FUNCTIONS
-function DOF = getDOF(node, localDOF)
-    DOF = 6*(node - 1) + localDOF;
-end
