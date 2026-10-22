@@ -135,3 +135,83 @@ RMS_y     = sqrt(mean(eY.^2))*1e6;
 fprintf('\nRMS results:\n');
 fprintf('RMS in z direction = %.6g nm\n', RMS_z);
 fprintf('RMS in y direction = %.6g nm\n', RMS_y);
+
+%% 2. POLISHING ORIENTATION
+
+% Range of angles to evaluate (from 0 to 90 degrees)
+alpha_vec = 0:1:90; 
+n_alpha = length(alpha_vec);
+
+
+calc_rms = @(disp) sqrt(mean((disp - A*(A\disp)).^2)) * 1e6;
+
+% Pre-allocate memory to store results
+avg_rms = zeros(n_alpha, 1);     
+rms_opt = zeros(n_alpha, 1);    
+rms_zen = zeros(n_alpha, 1);     
+rms_hor = zeros(n_alpha, 1);     
+
+% Main loop: test every possible polishing angle (alpha_p)
+for i = 1:n_alpha
+    alpha_p = alpha_vec(i);
+
+    % Mirror displacement if polished at alpha_p
+    w_polish = wZ * sind(alpha_p) + wY * cosd(alpha_p);
+
+    % Temporary array to store errors at each observation angle
+    rms_obs = zeros(n_alpha, 1);
+
+    % Inner loop: observe from all angles in the sky (alpha)
+    for j = 1:n_alpha
+        alpha_obs = alpha_vec(j);
+
+        % Mirror displacement when observing at alpha_obs
+        w_obs = wZ * sind(alpha_obs) + wY * cosd(alpha_obs);
+
+        % SFE = Difference in shape (removing plane with calc_rms)
+        rms_obs(j) = calc_rms(w_obs - w_polish);
+    end
+
+    % Save the average error for this polishing angle
+    avg_rms(i) = mean(rms_obs);
+
+    % Save specific curves requested in part 
+    if alpha_p == 90
+        rms_zen = rms_obs;
+    elseif alpha_p == 0
+        rms_hor = rms_obs;
+    end
+end
+
+% Find the optimal polishing angle 
+[min_avg_val, opt_idx] = min(avg_rms);
+opt_alpha_p = alpha_vec(opt_idx);
+
+% Recalculate the error curve for the optimal polishing 
+w_polish_opt = wZ * sind(opt_alpha_p) + wY * cosd(opt_alpha_p);
+for j = 1:n_alpha
+    w_obs = wZ * sind(alpha_vec(j)) + wY * cosd(alpha_vec(j));
+    rms_opt(j) = calc_rms(w_obs - w_polish_opt);
+end
+max_rms_opt = max(rms_opt);
+
+
+fprintf('Optimal polishing elevation (alpha_p) = %d deg\n', opt_alpha_p);
+fprintf('Average SFE for optimal polish = %.2f nm-rms\n', min_avg_val);
+fprintf('Maximum SFE for optimal polish = %.2f nm-rms\n', max_rms_opt);
+fprintf('\nComparison:\n');
+fprintf('Polish at Zenith (90 deg): Avg SFE = %.2f nm\n', avg_rms(end));
+fprintf('Polish at Horizon (0 deg): Avg SFE = %.2f nm\n', avg_rms(1));
+
+% Plot the RMS SFE versus alpha
+figure('Name', 'SFE vs Elevation');
+plot(alpha_vec, rms_opt, 'g-', 'LineWidth', 2); hold on;
+plot(alpha_vec, rms_zen, 'b--', 'LineWidth', 1.5);
+plot(alpha_vec, rms_hor, 'r:', 'LineWidth', 1.5);
+xlabel('Telescope elevation \alpha (degrees)');
+ylabel('RMS SFE (nm)');
+title('Surface Figure Error vs Elevation');
+legend(sprintf('Optimal Polish (\\alpha_p = %d^\\circ)', opt_alpha_p), ...
+    'Polish at Zenith (90^\\circ)', ...
+    'Polish at Horizon (0^\\circ)', 'Location', 'best');
+grid on;
