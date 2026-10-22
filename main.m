@@ -215,3 +215,24 @@ legend(sprintf('Optimal Polish (\\alpha_p = %d^\\circ)', opt_alpha_p), ...
     'Polish at Zenith (90^\\circ)', ...
     'Polish at Horizon (0^\\circ)', 'Location', 'best');
 grid on;
+
+
+%% 3. Eigen modes
+
+[V, D] = eigs(K, M, 7, 'smallestabs'); 
+freq = sqrt(D)/(2*pi);
+
+
+[V_c, D_c] = eigs(Knn, M(i_nn, i_nn), 7, 'smallestabs'); 
+
+
+mode6 = zeros(ndofs,1);
+mode6(i_nn) = V_c(:, 6);
+Vplot=reshape(mode6,[],6);
+
+fillhdf('template.h5','6_eigenmode.h5',Vplot);
+
+lambda = real(diag(D_c));
+[lambda,idx] = sort(lambda);
+
+Freq_dyn = sqrt(lambda)/(2*pi);
