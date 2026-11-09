@@ -204,17 +204,22 @@ fprintf('Polish at Zenith (90 deg): Avg SFE = %.2f nm\n', avg_rms(end));
 fprintf('Polish at Horizon (0 deg): Avg SFE = %.2f nm\n', avg_rms(1));
 
 % Plot the RMS SFE versus alpha
-figure('Name', 'SFE vs Elevation');
-plot(alpha_vec, rms_opt, 'g-', 'LineWidth', 2); hold on;
-plot(alpha_vec, rms_zen, 'b--', 'LineWidth', 1.5);
-plot(alpha_vec, rms_hor, 'r:', 'LineWidth', 1.5);
-xlabel('Telescope elevation \alpha (degrees)');
-ylabel('RMS SFE (nm)');
-title('Surface Figure Error vs Elevation');
-legend(sprintf('Optimal Polish (\\alpha_p = %d^\\circ)', opt_alpha_p), ...
-    'Polish at Zenith (90^\\circ)', ...
-    'Polish at Horizon (0^\\circ)', 'Location', 'best');
+figure('Name', 'SFE vs Elevation', 'Color', 'w'); 
+
+plot(alpha_vec, rms_opt, '-', 'Color', [0 0.45 0.74], 'LineWidth', 2.5); hold on; 
+plot(alpha_vec, rms_zen, '--', 'Color', [0.85 0.33 0.10], 'LineWidth', 2);      
+plot(alpha_vec, rms_hor, ':', 'Color', [0.47 0.67 0.19], 'LineWidth', 2.5);     
+xlabel('Telescope elevation \alpha (degrees)', 'FontSize', 11);
+ylabel('RMS SFE (nm)', 'FontSize', 11);
+title('Surface Figure Error vs Elevation', 'FontSize', 12, 'FontWeight', 'bold');
+
+legend(sprintf('Optimal Polish (\\alpha_p = %.1f^\\circ)', opt_alpha_p), ...
+    'Polish at Zenith (90^\circ)', ...
+    'Polish at Horizon (0^\circ)', ...
+    'Location', 'best', 'FontSize', 10);
+
 grid on;
+set(gca, 'GridAlpha', 0.3, 'FontSize', 10); 
 
 
 %% 3. Eigen modes
