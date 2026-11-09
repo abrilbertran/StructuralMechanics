@@ -99,13 +99,13 @@ fprintf('Total membrane y-reaction = %.6g N\n', gravY.Ry_membrane);
 
 % Total mass with mass matrix
 a_aux = repmat([1;0;0;0;0;0],nnodes,1);
-mTotal= a_aux.'*M*a_aux;  % we project the mass matrix into a rb space
+mTotal= a_aux.'*M*a_aux*10^3;  % we project the mass matrix into a rb space
 
 % print Mass results
 fprintf('\nMass Comparison:\n');
 fprintf('M from Mass matrix = %.6g tn\n', mTotal);
-fprintf('M from Rf in z direction = %.6g tn\n', gravZ.R_axialTotal/g);
-fprintf('M from Rf in y direction = %.6g tn\n', gravY.Ry_membrane/g);
+fprintf('M from Rf in z direction = %.6g kg\n', gravZ.R_axialTotal/9.81);
+fprintf('M from Rf in y direction = %.6g kg\n', gravY.Ry_membrane/9.81);
 
 
 %% 1C COMPUTE RMS SFE
@@ -243,76 +243,41 @@ wn = sqrt(lambda);
 
 %% 4. Dynamic SFE tip-tilt motion
 
-% Construction of acceleration vector for sinusoidal movement
-
-% a = zeros(ndofs, 6);
-% a(1:6:end, 1) = 1;
-% a(2:6:end, 2) = 1;
-% a(3:6:end, 3) = 1;
-% % We solve the eigenmode problem
-% [Phi, D_c] = eigs(Knn, Mnn, 7, 'smallestabs'); 
-% 
-% theta0=100e-6; %rad
-% zeta = 0.02;    % amortiguament 2%
-% f=1e-03:500;
-% w= 2*pi*f;
-% 
-% % Calculate K and M for each mode
-% mModal = zeros(size(Phi,2),1);
-% kModal = zeros(size(Phi,2),1);
-% b = zeros(size(Phi,2),a1);
-% 
-% for j = 1:size(Phi,2)
-%     phi = Phi(:,j);
-%     mModal(j) = phi'*Mnn*phi;
-%     kModal(j) = phi'*Knn*phi;
-% end
-% Fxi=Phi'*Fn;
-% 
-% % Damping modal freq response
-% Xi=zeros(7,length(w));
-% for n=1:length(w)
-%     alpha0 = theta0*w(n)^2;  % amplitut angular acceleration
-%     % 2. Rigid-body acceleration
-%     a_rb = zeros(ndofs,1);
-%     a_rb(2:6:end) = -alpha0*node_coords(:,3);
-%     a_rb(3:6:end) =  alpha0*node_coords(:,2);
-%     a_rb(4:6:end) =  alpha0;
-%     Xi(:,n)= Fxi./(-w(n)^2.*mModal+kModal+1i.*2*mModal.*wn.*zeta.*w(n));
-% end
-
-%% 4. Dynamic SFE tip-tilt motion
-
-% --- Setup ---
 theta0 = 100e-6; % 100 urad amplitude
 zeta = 0.02;     % 2% modal damping
-f = 0:1:100;     % Frequencies from 0 to 100 Hz
-w = 2*pi*f;      % Convert to rad/s
+f = 0:1:500;     
+w = 2*pi*f;      
 n_freqs = length(w);
+
+% Calculate K and M for each mode
+mModal = zeros(size(Phi,2),1);
+kModal = zeros(size(Phi,2),1);
+b = zeros(size(Phi,2),1);
+
+for j = 1:size(Phi,2)
+    phi = Phi(:,j);
+    mModal(j) = phi'*Mnn*phi;
+    kModal(j) = phi'*Knn*phi;
+end
+
+% Calculate the unit acceleration vector
+a_unit = zeros(nnodes, 6);
+for i = 1:nnodes
+    y  = node_coords(i,2);
+    z  = node_coords(i,3);
+    a_unit(i,:) = [0 -z y 1 0 0]; 
+end
 
 % Pre-allocate array for the dynamic RMS
 rms_dynamic = zeros(n_freqs, 1);
 
-% --- Calculate the spatial inertia force for a UNIT angular acceleration ---
-% The angular acceleration is alpha. The linear acceleration of a point is:
-% a_x = 0
-% a_y = -alpha * z
-% a_z =  alpha * y
-% We set alpha = 1 to get the spatial pattern.
-a_unit = zeros(ndofs, 1);
-for i = 1:nnodes
-    y = node_coords(i,2);
-    z = node_coords(i,3);
-    dof_idx = (i-1)*6 + (1:6);
-    a_unit(dof_idx) = [0; -z; y; 0; 0; 0]; 
-end
+% Obtain force vector = Mass * Acceleration
+F = M * a_unit; 
 
-% Inertia force = Mass * Acceleration
-F_inertia_unit = M * a_unit; 
 
 % Project this physical force into modal coordinates
 % Note: We must use the same eigenvectors from Section 3 (Phi)
-F_modal = Phi' * F_inertia_unit(i_nn);
+F_xi = Phi' * F(i_nn);
 
 % --- Frequency Loop ---
 for k = 1:n_freqs
@@ -322,27 +287,16 @@ for k = 1:n_freqs
     % theta(t) = theta0 * e^(i*omega*t)  -->  alpha(t) = -omega^2 * theta0
     alpha_amp = -omega^2 * theta0; 
 
-    % The modal force at this frequency
-    f_k = F_modal * alpha_amp;
+    % The modal force at this frequency from unitary to multiply with mass
+    f_k = F_xi * alpha_amp;
 
     % Modal response (Eq. 40 from the theory PDF)
     % We use 'wn' from Section 3. Since we didn't mass-normalize Phi, 
     % we must divide by the modal mass (which is implicitly 1 in your wn calculation).
     % The formula is: xi = f_k / (-w^2 + wn^2 + i*2*zeta*wn*w)
-    denom = (-omega^2 + wn.^2 + 1i * 2 * zeta * wn * omega);
-
-    % We need to divide by the modal mass if Phi is not normalized.
-    % However, your 'wn' was calculated from eigenvalues (wn^2 = lambda).
-    % By definition, phi^T * K * phi = lambda * phi^T * M * phi.
-    % If you didn't normalize Phi, you must divide by the modal mass.
-    % Let's calculate the modal mass to be safe:
-    m_modal = zeros(length(wn), 1);
-    for j = 1:length(wn)
-        m_modal(j) = Phi(:,j)' * Mnn * Phi(:,j);
-    end
-
-    % Correct modal response:
-    xi = f_k ./ (m_modal .* denom);
+    % denom = (-omega^2 + wn.^2 + 1i * 2 * zeta * wn * omega);
+    denom = kModal - omega^2*mModal+ 1i*2*zeta*mModal.*wn*omega;
+    xi = f_k./denom;
 
     % Transform back to physical coordinates
     U_modal = Phi * xi; 
@@ -351,13 +305,17 @@ for k = 1:n_freqs
     U_full = zeros(ndofs, 1);
     U_full(i_nn) = U_modal;
 
+
     % Extract Z-displacements of the optical surface
     w_surf = U_full(getDOF(sets.s3, 3));
 
     % Calculate RMS (using the calc_rms function from Section 2)
-    rms_dynamic(k) = real(calc_rms(w_surf));
-end
+    P=A\w_surf;
+    e = w_surf - A*p;
+    rms_dynamic(k) = sqrt(mean(abs(e).^2))*1e6;
 
+end
+disp(Freq_dyn(1:5)) 
 % --- Plotting ---
 figure('Name', 'Dynamic SFE vs Frequency');
 plot(f, rms_dynamic, 'b-', 'LineWidth', 2);
