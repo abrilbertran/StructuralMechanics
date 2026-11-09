@@ -162,14 +162,14 @@ for i = 1:n_alpha
     rms_obs = zeros(n_alpha, 1);
 
     % Inner loop: observe from all angles in the sky (alpha)
-    for j = 1:n_alpha
-        alpha_obs = alpha_vec(j);
+    for i = 1:n_alpha
+        alpha_obs = alpha_vec(i);
 
         % Mirror displacement when observing at alpha_obs
         w_obs = wZ * sind(alpha_obs) + wY * cosd(alpha_obs);
 
         % SFE = Difference in shape (removing plane with calc_rms)
-        rms_obs(j) = calc_rms(w_obs - w_polish);
+        rms_obs(i) = calc_rms(w_obs - w_polish);
     end
 
     % Save the average error for this polishing angle
@@ -189,9 +189,9 @@ opt_alpha_p = alpha_vec(opt_idx);
 
 % Recalculate the error curve for the optimal polishing 
 w_polish_opt = wZ * sind(opt_alpha_p) + wY * cosd(opt_alpha_p);
-for j = 1:n_alpha
-    w_obs = wZ * sind(alpha_vec(j)) + wY * cosd(alpha_vec(j));
-    rms_opt(j) = calc_rms(w_obs - w_polish_opt);
+for i = 1:n_alpha
+    w_obs = wZ * sind(alpha_vec(i)) + wY * cosd(alpha_vec(i));
+    rms_opt(i) = calc_rms(w_obs - w_polish_opt);
 end
 max_rms_opt = max(rms_opt);
 
@@ -219,20 +219,62 @@ grid on;
 
 %% 3. Eigen modes
 
+% RB modes unconstrained
 [V, D] = eigs(K, M, 7, 'smallestabs'); 
-freq = sqrt(D)/(2*pi);
+freq = sqrt(D)./(2*pi);
+freq = real(diag(freq));
+[freq,~] = sort(freq);
 
-
-[V_c, D_c] = eigs(Knn, M(i_nn, i_nn), 7, 'smallestabs'); 
-
+% RB modes constrained with BC ex 1
+Mnn=M(i_nn, i_nn);
+[Phi, D_c] = eigs(Knn, Mnn, 7, 'smallestabs'); 
 
 mode6 = zeros(ndofs,1);
-mode6(i_nn) = V_c(:, 6);
+mode6(i_nn) = Phi(:, 6);
 Vplot=reshape(mode6,[],6);
-
 fillhdf('template.h5','6_eigenmode.h5',Vplot);
 
 lambda = real(diag(D_c));
 [lambda,idx] = sort(lambda);
 
 Freq_dyn = sqrt(lambda)/(2*pi);
+wn = sqrt(lambda);
+
+
+%% 4. Dynamic SFE tip-tilt motion
+
+% Construction of acceleration vector for sinusoidal movement
+
+a = zeros(ndofs, 6);
+
+% We solve the eigenmode problem
+[Phi, D_c] = eigs(Knn, Mnn, 7, 'smallestabs'); 
+
+theta0=100e-6; %rad
+zeta = 0.02;    % amortiguament 2%
+f=1e-03:500;
+w= 2*pi*f;
+
+% Calculate K and M for each mode
+mModal = zeros(size(Phi,2),1);
+kModal = zeros(size(Phi,2),1);
+b = zeros(size(Phi,2),a1);
+
+for j = 1:size(Phi,2)
+    phi = Phi(:,j);
+    mModal(j) = phi'*Mnn*phi;
+    kModal(j) = phi'*Knn*phi;
+end
+Fxi=Phi'*Fn;
+
+% Damping modal freq response
+Xi=zeros(7,length(w));
+for n=1:length(w)
+    alpha0 = theta0*w(n)^2;  % amplitut angular acceleration
+    % 2. Rigid-body acceleration
+    a_rb = zeros(ndofs,1);
+    a_rb(2:6:end) = -alpha0*node_coords(:,3);
+    a_rb(3:6:end) =  alpha0*node_coords(:,2);
+    a_rb(4:6:end) =  alpha0;
+    Xi(:,n)= Fxi./(-w(n)^2.*mModal+kModal+1i.*2*mModal.*wn.*zeta.*w(n));
+end
