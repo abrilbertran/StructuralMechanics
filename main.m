@@ -86,12 +86,12 @@ gravY.U(i_nn) = un;
 
 % Print reactions results
 fprintf('Gravity in z: \n');
-fprintf('Total axial support z-reaction = %.6g N\n', gravZ.R_axialTotal);
+fprintf('Total axial support = %.6g N\n', gravZ.R_axialTotal);
 fprintf('Total membrane x-reaction = %.6g N\n', gravZ.Rx_membrane);
 fprintf('Total membrane y-reaction = %.6g N\n', gravZ.Ry_membrane);
 
 fprintf('\nGravity in y: \n');
-fprintf('Total axial support z-reaction = %.6g N\n', gravY.R_axialTotal);
+fprintf('Total axial support = %.6g N\n', gravY.R_axialTotal);
 fprintf('Total membrane x-reaction = %.6g N\n', gravY.Rx_membrane);
 fprintf('Total membrane y-reaction = %.6g N\n', gravY.Ry_membrane);
 
@@ -99,11 +99,11 @@ fprintf('Total membrane y-reaction = %.6g N\n', gravY.Ry_membrane);
 
 % Total mass with mass matrix
 a_aux = repmat([1;0;0;0;0;0],nnodes,1);
-mTotal= a_aux.'*M*a_aux*10^3;  % we project the mass matrix into a rb space
+mTotal= (a_aux.'*M*a_aux)*10^3;  % we project the mass matrix into a rb space
 
 % print Mass results
 fprintf('\nMass Comparison:\n');
-fprintf('M from Mass matrix = %.6g tn\n', mTotal);
+fprintf('M from Mass matrix = %.6g kg\n', mTotal);
 fprintf('M from Rf in z direction = %.6g kg\n', gravZ.R_axialTotal/9.81);
 fprintf('M from Rf in y direction = %.6g kg\n', gravY.Ry_membrane/9.81);
 
@@ -225,34 +225,38 @@ set(gca, 'GridAlpha', 0.3, 'FontSize', 10);
 %% 3. Eigen modes
 
 % RB modes unconstrained
-[V, D] = eigs(K, M, 7, 'smallestabs'); 
-freq = sqrt(D)./(2*pi);
-freq = real(diag(freq));
-[freq,~] = sort(freq);
+nmodes=7;
+[V, D] = eigs(K, M, nmodes, 'smallestabs'); 
+
+[lamb,idx] = sort(real(diag(D)));
+V = V(:, idx);
+freq= sqrt(lamb)/(2*pi);
 
 % RB modes constrained with BC ex 1
 Mnn=M(i_nn, i_nn);
 [Phi, D_c] = eigs(Knn, Mnn, 7, 'smallestabs'); 
 
+[lambda,idx] = sort(real(diag(D_c)));
+Phi = Phi(:, idx);
+
+wn = sqrt(lambda);  % natural angular f [rad/s]
+fn = wn/(2*pi);     % Natural frequencies [Hz]
+
+% Export 6 mode
 mode6 = zeros(ndofs,1);
 mode6(i_nn) = Phi(:, 6);
 Vplot=reshape(mode6,[],6);
 fillhdf('template.h5','6_eigenmode.h5',Vplot);
 
-lambda = real(diag(D_c));
-[lambda,idx] = sort(lambda);
 
-Freq_dyn = sqrt(lambda)/(2*pi);
-wn = sqrt(lambda);
 
 
 %% 4. Dynamic SFE tip-tilt motion
 
-theta0 = 100e-6; % 100 urad amplitude
+theta0 = 100e-6; % 100 urad amplitude [rad]
 zeta = 0.02;     % 2% modal damping
-f = 0:1:500;     
+f = 0:1:500;     % max freq [Hz]
 w = 2*pi*f;      
-n_freqs = length(w);
 
 % Calculate K and M for each mode
 mModal = zeros(size(Phi,2),1);
@@ -265,61 +269,42 @@ for j = 1:size(Phi,2)
     kModal(j) = phi'*Knn*phi;
 end
 
-% Calculate the unit acceleration vector
-a_unit = zeros(ndofs, 1);
-for i = 1:nnodes
-    y = node_coords(i,2);
-    z = node_coords(i,3);
+% Calculate the adim acceleration vector
+a_dyn          = zeros(ndofs, 1);
+a_dyn(2:6:end) = -node_coords(:,3);  % ty
+a_dyn(3:6:end) =  node_coords(:,2);  % tz
+a_dyn(4:6:end) =  ones(nnodes,1);    % rx
 
-    dof_idx = (i-1)*6 + (1:6);
-    a_unit(dof_idx) = [0;-z;y;0;0;0];
-end
-
-% Pre-allocate array for the dynamic RMS
-rms_dynamic = zeros(n_freqs, 1);
-
-% Obtain force vector = Mass * Acceleration
-F = M * a_unit; 
+F = M * a_dyn; 
+F_xi = Phi' * F(i_nn); % project to modal coords
 
 
-% Project this physical force into modal coordinates
-% Note: We must use the same eigenvectors from Section 3 (Phi)
-F_xi = Phi' * F(i_nn);
+rms_dynamic = zeros(numel(f), 1); % initialization rms variable
+U_full = zeros(ndofs, 1);
 
 % --- Frequency Loop ---
-for k = 1:n_freqs
+for k = 1:numel(f)
     omega = w(k); % Current forcing frequency
-
-    % The actual angular acceleration amplitude at this frequency
-    % theta(t) = theta0 * e^(i*omega*t)  -->  alpha(t) = -omega^2 * theta0
     alpha_amp = -omega^2 * theta0; 
-
-    % The modal force at this frequency from unitary to multiply with mass
     f_k = F_xi * alpha_amp;
+    xi = f_k./(kModal - omega^2*mModal+ 1i*2*zeta*mModal.*wn*omega);
 
-    % Modal response
-    denom = kModal - omega^2*mModal+ 1i*2*zeta*mModal.*wn*omega;
-    xi = f_k./denom;
+    U_full(i_nn) = Phi * xi; % transform back to physical coords and global ref system. Constrained DOFS are 0
 
-    % Transform back to physical coordinates
-    U_modal = Phi * xi; 
-
-    % Expand to full DOFs (constrained DOFs are 0)
-    U_full = zeros(ndofs, 1);
-    U_full(i_nn) = U_modal;
-
-
-    % Extract Z-displacements of the optical surface
-    w_surf = U_full(getDOF(sets.s3, 3));
-
-    % Calculate RMS (using the calc_rms function from Section 2)
+    % Calculate RMS
+    w_surf = U_full(getDOF(sets.s3, 3));  % extract dofs from optical surface
     P=A\w_surf;
     e = w_surf - A*P;
     rms_dynamic(k) = sqrt(mean(abs(e).^2))*1e6;
-
 end
 
-% --- Plotting ---
+[maxSFE, iMax] = max(rms_dynamic);
+
+fprintf('\nDynamic SFE at 0 Hz: %.6g nm-rms\n', rms_dynamic(1));
+fprintf('Largest sampled SFE: %.6g nm-rms at %.6g Hz\n', maxSFE, f(iMax));
+
+
+% PLOTS
 figure('Name', 'Dynamic SFE vs Frequency');
 plot(f, rms_dynamic, 'b-', 'LineWidth', 2);
 xlabel('Frequency (Hz)');
