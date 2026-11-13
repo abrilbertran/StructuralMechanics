@@ -211,7 +211,7 @@ plot(alpha_vec, rms_zen, '--', 'Color', [0.85 0.33 0.10], 'LineWidth', 2);
 plot(alpha_vec, rms_hor, ':', 'Color', [0.47 0.67 0.19], 'LineWidth', 2.5);     
 xlabel('Telescope elevation \alpha (degrees)', 'FontSize', 11);
 ylabel('RMS SFE (nm)', 'FontSize', 11);
-title('Surface Figure Error vs Elevation', 'FontSize', 12, 'FontWeight', 'bold');
+%title('Surface Figure Error vs Elevation', 'FontSize', 12, 'FontWeight', 'bold');
 
 legend(sprintf('Optimal Polish (\\alpha_p = %.1f^\\circ)', opt_alpha_p), ...
     'Polish at Zenith (90^\circ)', ...
@@ -230,7 +230,7 @@ nmodes=7;
 
 [lamb,idx] = sort(real(diag(D)));
 V = V(:, idx);
-freq= sqrt(lamb)/(2*pi);
+freq= real(sqrt(lamb)/(2*pi));
 
 % RB modes constrained with BC ex 1
 Mnn=M(i_nn, i_nn);
@@ -245,7 +245,7 @@ fn = wn/(2*pi);     % Natural frequencies [Hz]
 % Export 6 mode
 mode6 = zeros(ndofs,1);
 mode6(i_nn) = Phi(:, 6);
-Vplot=reshape(mode6,[],6);
+Vplot = reshape(mode6,6,[]).';
 fillhdf('template.h5','6_eigenmode.h5',Vplot);
 
 
