@@ -143,45 +143,35 @@ fprintf('RMS in y direction = %.6g nm\n', RMS_y);
 alpha_vec = 0:0.1:90; 
 n_alpha = length(alpha_vec);
 
-
-calc_rms = @(disp) sqrt(mean((disp - A*(A\disp)).^2)) * 1e6;
-
-% Pre-allocate memory to store results
+% Initialization
 avg_rms = zeros(n_alpha, 1);     
 rms_opt = zeros(n_alpha, 1);    
 rms_zen = zeros(n_alpha, 1);     
 rms_hor = zeros(n_alpha, 1);     
 
-% Main loop: test every possible polishing angle (alpha_p)
+
 for j = 1:n_alpha
-    alpha_p = alpha_vec(j);
+    alpha_p  = alpha_vec(j);
+    w_polish = wZ * sind(alpha_p) + wY * cosd(alpha_p); % Mirror displacement for alpha_p
+    rms_obs  = zeros(n_alpha, 1);   %errors at each observation angle
+    rms_obs2 = zeros(n_alpha, 1);
 
-    % Mirror displacement if polished at alpha_p
-    w_polish = wZ * sind(alpha_p) + wY * cosd(alpha_p);
-
-    % Temporary array to store errors at each observation angle
-    rms_obs = zeros(n_alpha, 1);
-
-    % Inner loop: observe from all angles in the sky (alpha)
-    for i = 1:n_alpha
+    for i = 1:n_alpha              %for all observation angles
         alpha_obs = alpha_vec(i);
-
-        % Mirror displacement when observing at alpha_obs
-        w_obs = wZ * sind(alpha_obs) + wY * cosd(alpha_obs);
-
-        % SFE = Difference in shape (removing plane with calc_rms)
-        rms_obs(i) = calc_rms(w_obs - w_polish);
+        w_obs     = wZ * sind(alpha_obs) + wY * cosd(alpha_obs); % Mirror displacement when observing at alpha_obs
+        disp      = w_obs-w_polish;
+        rms_obs(i)= sqrt(mean((disp - A*(A\disp)).^2)) * 1e6; %SFE
     end
 
-    % Save the average error for this polishing angle
-    avg_rms(j) = mean(rms_obs);
+    avg_rms(j) = mean(rms_obs); % average SFE for alpha_p
 
-    % Save specific curves requested in part 
+    % Curves for 90º and 0º
     if alpha_p == 90
         rms_zen = rms_obs;
     elseif alpha_p == 0
         rms_hor = rms_obs;
     end
+
 end
 
 % Find the optimal polishing angle 
@@ -191,12 +181,14 @@ opt_alpha_p = alpha_vec(opt_idx);
 % Recalculate the error curve for the optimal polishing 
 w_polish_opt = wZ * sind(opt_alpha_p) + wY * cosd(opt_alpha_p);
 for i = 1:n_alpha
-    w_obs = wZ * sind(alpha_vec(i)) + wY * cosd(alpha_vec(i));
-    rms_opt(i) = calc_rms(w_obs - w_polish_opt);
+    w_obs      = wZ * sind(alpha_vec(i)) + wY * cosd(alpha_vec(i));
+    disp       = w_obs - w_polish_opt;
+    rms_opt(i) = sqrt(mean((disp - A*(A\disp)).^2)) * 1e6;
+    % rms_opt(i) = calc_rms(w_obs - w_polish_opt);
 end
 max_rms_opt = max(rms_opt);
 
-fprintf('Optimal polishing elevation (alpha_p) = %.1f deg\n', opt_alpha_p);
+fprintf('\nOptimal polishing elevation (alpha_p) = %.1f deg\n', opt_alpha_p);
 fprintf('Average SFE for optimal polish = %.2f nm-rms\n', min_avg_val);
 fprintf('Maximum SFE for optimal polish = %.2f nm-rms\n', max_rms_opt);
 fprintf('\nComparison:\n');
@@ -282,7 +274,7 @@ F_xi = Phi' * F(i_nn); % project to modal coords
 rms_dynamic = zeros(numel(f), 1); % initialization rms variable
 U_full = zeros(ndofs, 1);
 
-% --- Frequency Loop ---
+
 for k = 1:numel(f)
     omega = w(k); % Current forcing frequency
     alpha_amp = -omega^2 * theta0; 
