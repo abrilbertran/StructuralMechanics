@@ -86,14 +86,24 @@ gravY.U(i_nn) = un;
 
 % Print reactions results
 fprintf('Gravity in z: \n');
+fprintf('Single axial support = %.6g N\n', gravZ.R_axial);
 fprintf('Total axial support = %.6g N\n', gravZ.R_axialTotal);
 fprintf('Total membrane x-reaction = %.6g N\n', gravZ.Rx_membrane);
 fprintf('Total membrane y-reaction = %.6g N\n', gravZ.Ry_membrane);
 
 fprintf('\nGravity in y: \n');
+fprintf('Single axial support = %.6g N\n', gravZ.R_axial);
 fprintf('Total axial support = %.6g N\n', gravY.R_axialTotal);
 fprintf('Total membrane x-reaction = %.6g N\n', gravY.Rx_membrane);
 fprintf('Total membrane y-reaction = %.6g N\n', gravY.Ry_membrane);
+
+% Export deformations in NASVIEW
+Vplot_Z = reshape(gravZ.U, 6, []).';
+fillhdf('template.h5', 'gravity_Z.h5', Vplot_Z);
+
+Vplot_Y = reshape(gravY.U, 6, []).';
+fillhdf('template.h5', 'gravity_Y.h5', Vplot_Y);
+
 
 %% 1B COMPUTE MASS AND REACTION FORCES ARE SAME IN BOTH DIRECTIONS
 
